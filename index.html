@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Management App</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+</head>
+<body class="bg-gray-100">
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useContext, createContext, useEffect } = React;
+
+    const DataContext = createContext();
+
+    const lastDayOfMonth = (date) => {
+      const d = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+      return d;
+    };
+
+    const addMonths = (date, months) => {
+      const d = new Date(date);
+      d.setMonth(d.getMonth() + months);
+      return d;
+    };
+
+    const formatDate = (date) => date.toISOString().slice(0,10);
+
+    const paymentDateFromSite = (billDate, site) => {
+      const d = new Date(billDate);
+      switch(site){
+        case '末締め翌月末払い':
+          return formatDate(lastDayOfMonth(addMonths(d,1)));
+        case '15日締め翌月15日払い':
+          d.setMonth(d.getMonth()+1);
+          d.setDate(15);
+          return formatDate(d);
+        case '20日締め翌月20日払い':
+          d.setMonth(d.getMonth()+1);
+          d.setDate(20);
+          return formatDate(d);
+        default:
+          return formatDate(d);
+      }
+    };
+
+    const sampleCustomers = [
+      {id:1,name:'宝島店',phone:'',email:'',address:'',site:'末締め翌月末払い',type:'法人',createdAt:'2024-01-10',notes:''},
+      {id:2,name:'浦添郵便局',phone:'',email:'',address:'',site:'末締め翌月末払い',type:'法人',createdAt:'2024-02-02',notes:''},
+      {id:3,name:'城間郵便局',phone:'',email:'',address:'',site:'末締め翌月末払い',type:'法人',createdAt:'2024-02-03',notes:''},
+      {id:4,name:'牧港郵便局',phone:'',email:'',address:'',site:'末締め翌月末払い',type:'法人',createdAt:'2024-02-04',notes:''},
+      {id:5,name:'佐和田洋菓子',phone:'',email:'',address:'',site:'15日締め翌月15日払い',type:'法人',createdAt:'2024-03-01',notes:''},
+    ];
+
+    const sampleOrders = [
+      {id:1,date:'2024-06-01',customerId:1,items:[{name:'琉球島桑茶菓子',qty:2,price:1404}],billDate:'2024-06-30',paymentDate:'2024-07-31',paid:false,notes:''},
+      {id:2,date:'2024-05-15',customerId:5,items:[{name:'桑の想',qty:10,price:164}],billDate:'2024-05-15',paymentDate:'2024-06-15',paid:true,notes:''},
+    ];
+
+    const samplePurchases = [
+      {id:1,date:'2024-06-05',vendor:'原料屋',items:[{name:'小麦粉',qty:10,price:1000}],total:10000,deliveryDate:'2024-06-06',paymentDate:'2024-07-31',paid:false,notes:''},
+      {id:2,date:'2024-05-10',vendor:'包装屋',items:[{name:'袋',qty:100,price:10}],total:1000,deliveryDate:'2024-05-12',paymentDate:'2024-06-30',paid:true,notes:''},
+    ];
+
+    const DataProvider = ({children}) => {
+      const [customers, setCustomers] = useState(sampleCustomers);
+      const [orders, setOrders] = useState(sampleOrders);
+      const [purchases, setPurchases] = useState(samplePurchases);
+
+      const addCustomer = (c) => setCustomers([...customers, {...c, id: Date.now()}]);
+      const addOrder = (o) => setOrders([...orders, {...o, id: Date.now()}]);
+      const addPurchase = (p) => setPurchases([...purchases, {...p, id: Date.now()}]);
+
+      const value = {customers, orders, purchases, addCustomer, addOrder, addPurchase, setCustomers, setOrders, setPurchases};
+      return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
+    };
+
+    const Nav = ({setPage, page}) => (
+      <nav className="bg-blue-500 p-4 text-white flex space-x-4">
+        {['dashboard','customers','orders','purchases','summary'].map(p => (
+          <button key={p} onClick={()=>setPage(p)} className={page===p?'font-bold':''}>{p}</button>
+        ))}
+      </nav>
+    );
+
+    const Dashboard = () => {
+      const {orders, purchases} = useContext(DataContext);
+      const now = new Date();
+      const month = now.toISOString().slice(0,7);
+      const sales = orders.filter(o=>o.date.startsWith(month)).reduce((sum,o)=>sum+o.items.reduce((s,i)=>s+i.qty*i.price,0),0);
+      const payments = orders.filter(o=>o.paymentDate.startsWith(month)).reduce((sum,o)=>sum+o.items.reduce((s,i)=>s+i.qty*i.price,0),0);
+      const costs = purchases.filter(p=>p.paymentDate.startsWith(month)).reduce((sum,p)=>sum+p.total,0);
+      return (
+        <div className="p-4">
+          <h1 className="text-xl mb-4">今月のサマリー ({month})</h1>
+          <p>売上: {sales}円</p>
+          <p>入金: {payments}円</p>
+          <p>支払い: {costs}円</p>
+        </div>
+      );
+    };
+
+    const CustomerList = () => {
+      const {customers, addCustomer, setCustomers} = useContext(DataContext);
+      const [form, setForm] = useState({name:'',phone:'',email:'',address:'',site:'末締め翌月末払い',type:'法人',notes:''});
+      const submit = () => {addCustomer({...form,createdAt:formatDate(new Date())}); setForm({...form,name:''});};
+      const del = id => setCustomers(customers.filter(c=>c.id!==id));
+      return (
+        <div className="p-4">
+          <h2 className="text-lg">顧客管理</h2>
+          <div className="my-2 space-x-2">
+            <input className="border" placeholder="名前" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/>
+            <select value={form.site} onChange={e=>setForm({...form,site:e.target.value})} className="border">
+              <option>末締め翌月末払い</option>
+              <option>15日締め翌月15日払い</option>
+              <option>20日締め翌月20日払い</option>
+            </select>
+            <button onClick={submit} className="bg-blue-500 text-white px-2">追加</button>
+          </div>
+          <table className="table-auto bg-white">
+            <thead><tr><th>名前</th><th>支払いサイト</th><th>削除</th></tr></thead>
+            <tbody>
+              {customers.map(c=> (
+                <tr key={c.id} className="border"><td>{c.name}</td><td>{c.site}</td><td><button className="text-red-500" onClick={()=>del(c.id)}>削除</button></td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    };
+
+    const OrderList = () => {
+      const {orders, customers, addOrder, setOrders} = useContext(DataContext);
+      const [form, setForm] = useState({date:formatDate(new Date()), customerId:customers[0]?.id || 0, item:'', qty:1, price:0, billDate:formatDate(new Date()), notes:''});
+
+      const updatePayment = (billDate, cid) => {
+        const cust = customers.find(c=>c.id===parseInt(cid));
+        if(cust) return paymentDateFromSite(billDate, cust.site);
+        return billDate;
+      };
+
+      const submit = () => {
+        const paymentDate = updatePayment(form.billDate, form.customerId);
+        const total = form.qty * form.price;
+        addOrder({date:form.date, customerId:parseInt(form.customerId), items:[{name:form.item, qty:form.qty, price:form.price}], billDate:form.billDate, paymentDate, paid:false, notes:form.notes});
+        setForm({...form, item:'', price:0});
+      };
+
+      const del = id => setOrders(orders.filter(o=>o.id!==id));
+
+      return (
+        <div className="p-4">
+          <h2 className="text-lg">受注管理</h2>
+          <div className="my-2 space-x-2">
+            <input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} className="border"/>
+            <select value={form.customerId} onChange={e=>setForm({...form,customerId:e.target.value})} className="border">
+              {customers.map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <input placeholder="商品" value={form.item} onChange={e=>setForm({...form,item:e.target.value})} className="border"/>
+            <input type="number" value={form.qty} onChange={e=>setForm({...form,qty:parseInt(e.target.value)})} className="border w-16"/>
+            <input type="number" value={form.price} onChange={e=>setForm({...form,price:parseInt(e.target.value)})} className="border w-20"/>
+            <input type="date" value={form.billDate} onChange={e=>setForm({...form,billDate:e.target.value})} className="border"/>
+            <button onClick={submit} className="bg-blue-500 text-white px-2">追加</button>
+          </div>
+          <table className="table-auto bg-white">
+            <thead><tr><th>日付</th><th>顧客</th><th>商品</th><th>金額</th><th>請求日</th><th>入金日</th><th>削除</th></tr></thead>
+            <tbody>
+              {orders.map(o=> (
+                <tr key={o.id} className="border"><td>{o.date}</td><td>{customers.find(c=>c.id===o.customerId)?.name}</td><td>{o.items.map(i=>i.name).join(',')}</td><td>{o.items.reduce((s,i)=>s+i.qty*i.price,0)}</td><td>{o.billDate}</td><td>{o.paymentDate}</td><td><button className="text-red-500" onClick={()=>del(o.id)}>削除</button></td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    };
+
+    const PurchaseList = () => {
+      const {purchases, addPurchase, setPurchases} = useContext(DataContext);
+      const [form, setForm] = useState({date:formatDate(new Date()), vendor:'', item:'', qty:1, price:0, deliveryDate:formatDate(new Date()), notes:''});
+
+      const submit = () => {
+        const paymentDate = formatDate(lastDayOfMonth(addMonths(new Date(form.deliveryDate),1)));
+        const total = form.qty*form.price;
+        addPurchase({date:form.date, vendor:form.vendor, items:[{name:form.item, qty:form.qty, price:form.price}], total, deliveryDate:form.deliveryDate, paymentDate, paid:false, notes:form.notes});
+        setForm({...form, vendor:'', item:'', price:0});
+      };
+      const del = id => setPurchases(purchases.filter(p=>p.id!==id));
+      return (
+        <div className="p-4">
+          <h2 className="text-lg">発注管理</h2>
+          <div className="my-2 space-x-2">
+            <input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} className="border"/>
+            <input placeholder="仕入先" value={form.vendor} onChange={e=>setForm({...form,vendor:e.target.value})} className="border"/>
+            <input placeholder="商品" value={form.item} onChange={e=>setForm({...form,item:e.target.value})} className="border"/>
+            <input type="number" value={form.qty} onChange={e=>setForm({...form,qty:parseInt(e.target.value)})} className="border w-16"/>
+            <input type="number" value={form.price} onChange={e=>setForm({...form,price:parseInt(e.target.value)})} className="border w-20"/>
+            <input type="date" value={form.deliveryDate} onChange={e=>setForm({...form,deliveryDate:e.target.value})} className="border"/>
+            <button onClick={submit} className="bg-blue-500 text-white px-2">追加</button>
+          </div>
+          <table className="table-auto bg-white">
+            <thead><tr><th>日付</th><th>仕入先</th><th>商品</th><th>金額</th><th>納品日</th><th>支払日</th><th>削除</th></tr></thead>
+            <tbody>
+              {purchases.map(p=> (
+                <tr key={p.id} className="border"><td>{p.date}</td><td>{p.vendor}</td><td>{p.items.map(i=>i.name).join(',')}</td><td>{p.total}</td><td>{p.deliveryDate}</td><td>{p.paymentDate}</td><td><button className="text-red-500" onClick={()=>del(p.id)}>削除</button></td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    };
+
+    const Summary = () => {
+      const {orders, purchases} = useContext(DataContext);
+      const months = [...new Set([...orders.map(o=>o.date.slice(0,7)), ...purchases.map(p=>p.date.slice(0,7))])].sort();
+      return (
+        <div className="p-4">
+          <h2 className="text-lg">月次収支</h2>
+          {months.map(m => {
+            const sales = orders.filter(o=>o.date.startsWith(m)).reduce((s,o)=>s+o.items.reduce((p,i)=>p+i.qty*i.price,0),0);
+            const received = orders.filter(o=>o.paymentDate.startsWith(m)).reduce((s,o)=>s+o.items.reduce((p,i)=>p+i.qty*i.price,0),0);
+            const pay = purchases.filter(p=>p.paymentDate.startsWith(m)).reduce((s,p)=>s+p.total,0);
+            return <div key={m} className="border p-2 my-1">{m}: 売上 {sales}円 入金 {received}円 支払 {pay}円</div>;
+          })}
+        </div>
+      );
+    };
+
+    const App = () => {
+      const [page, setPage] = useState('dashboard');
+      return (
+        <DataProvider>
+          <Nav setPage={setPage} page={page} />
+          {page==='dashboard' && <Dashboard/>}
+          {page==='customers' && <CustomerList/>}
+          {page==='orders' && <OrderList/>}
+          {page==='purchases' && <PurchaseList/>}
+          {page==='summary' && <Summary/>}
+        </DataProvider>
+      );
+    };
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>
